@@ -62,8 +62,10 @@ import io.sanghun.compose.video.uri.VideoPlayerMediaItem
 import io.sanghun.compose.video.uri.toUri
 import io.sanghun.compose.video.util.findActivity
 import io.sanghun.compose.video.util.setFullScreen
+import kotlinx.coroutines.Dispatchers
 import java.util.*
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 /**
  * [VideoPlayer] is UI component that can play video in Jetpack Compose. It works based on ExoPlayer.
@@ -98,6 +100,7 @@ import kotlinx.coroutines.delay
  * @param enablePip Enable PIP (Picture-in-Picture).
  * @param enablePipWhenBackPressed With [enablePip] is `true`, set whether to enable PIP mode even when you press Back. Default is false.
  * @param handleAudioFocus Set whether to handle the video playback control automatically when it is playing in PIP mode and media is played in another app. Default is true.
+ * @param playerBuilder Return exoplayer builder. This instance allows you to customise the ExoPlayer while in the Building process. Used to add various components like other RenderFactories.
  * @param playerInstance Return exoplayer instance. This instance allows you to add [androidx.media3.exoplayer.analytics.AnalyticsListener] to receive various events from the player.
  */
 @SuppressLint("SourceLockedOrientationActivity", "UnsafeOptInUsageError")
@@ -122,6 +125,7 @@ fun VideoPlayer(
     defaultFullScreeen: Boolean = false,
     enablePipWhenBackPressed: Boolean = false,
     handleAudioFocus: Boolean = true,
+    playerBuilder: ExoPlayer.Builder.() -> ExoPlayer.Builder = { this },
     playerInstance: ExoPlayer.() -> Unit = {},
 ) {
     val context = LocalContext.current
@@ -151,6 +155,7 @@ fun VideoPlayer(
                     setMediaSourceFactory(DefaultMediaSourceFactory(cacheDataSourceFactory))
                 }
             }
+            .playerBuilder()
             .build()
             .also(playerInstance)
     }
@@ -189,21 +194,23 @@ fun VideoPlayer(
         mediaSession = MediaSession.Builder(context, ForwardingPlayer(player))
             .setId("VideoPlayerMediaSession_${UUID.randomUUID().toString().lowercase().split("-").first()}")
             .build()
-        val exoPlayerMediaItems = mediaItems.map {
-            val uri = it.toUri(context)
+        val exoPlayerMediaItems = withContext(Dispatchers.IO) {
+            mediaItems.map {
+                val uri = it.toUri(context)
 
-            MediaItem.Builder().apply {
-                setUri(uri)
-                setMediaMetadata(it.mediaMetadata)
-                setMimeType(it.mimeType)
-                setDrmConfiguration(
-                    if (it is VideoPlayerMediaItem.NetworkMediaItem) {
-                        it.drmConfiguration
-                    } else {
-                        null
-                    },
-                )
-            }.build()
+                MediaItem.Builder().apply {
+                    setUri(uri)
+                    setMediaMetadata(it.mediaMetadata)
+                    setMimeType(it.mimeType)
+                    setDrmConfiguration(
+                        if (it is VideoPlayerMediaItem.NetworkMediaItem) {
+                            it.drmConfiguration
+                        } else {
+                            null
+                        },
+                    )
+                }.build()
+            }
         }
 
         player.setMediaItems(exoPlayerMediaItems)
